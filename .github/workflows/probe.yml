@@ -1,0 +1,65 @@
+name: probe
+
+# Ручная разведка источников. Отдельно от scan, потому что с этой машины
+# Sendico недоступен: главная отдаёт Cloudflare-челлендж (cf-mitigated=challenge),
+# а /api/* отвечает 403 «Access denied» на ЛЮБОЙ запрос — включая POST /api/login
+# с пустым телом (то есть гард срабатывает до проверки кредов, дело не в пароле).
+# Из Actions IP другой — проверяем, открывается ли оттуда.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Что разведать'
+        type: choice
+        options: [sendico, kufar, both]
+        default: sendico
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probe
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Actions маскирует значения секретов в логах сам; add-mask — второй слой,
+      # чтобы креды не утекли даже если проб напечатает их в составе ошибки.
+      - name: Mask credentials
+        env:
+          SENDICO_EMAIL: ${{ secrets.SENDICO_EMAIL }}
+          SENDICO_PASSWORD: ${{ secrets.SENDICO_PASSWORD }}
+        run: |
+          [ -n "$SENDICO_EMAIL" ] && echo "::add-mask::$SENDICO_EMAIL"
+          [ -n "$SENDICO_PASSWORD" ] && echo "::add-mask::$SENDICO_PASSWORD"
+          echo "секреты заданы: email=$([ -n "$SENDICO_EMAIL" ] && echo да || echo НЕТ), password=$([ -n "$SENDICO_PASSWORD" ] && echo да || echo НЕТ)"
+
+      - name: Где мы находимся
+        run: |
+          curl -s https://ipinfo.io/json | head -20 || true
+
+      - name: Sendico — гард, маршруты, фронтенд-бандл
+        if: ${{ inputs.target != 'kufar' }}
+        run: node tools/probe_sendico_gate.mjs
+
+      - name: Sendico — вход и поиск аукционных лотов
+        if: ${{ inputs.target != 'kufar' }}
+        env:
+          SENDICO_EMAIL: ${{ secrets.SENDICO_EMAIL }}
+          SENDICO_PASSWORD: ${{ secrets.SENDICO_PASSWORD }}
+        run: node tools/probe_sendico.mjs
+
+      - name: Kufar — фильтры категорий
+        if: ${{ inputs.target != 'sendico' }}
+        run: |
+          node tools/probe_verify.mjs
+          node tools/probe_multi.mjs

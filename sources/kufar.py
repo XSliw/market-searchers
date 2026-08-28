@@ -9,6 +9,21 @@
 Поля ответа (проверены): ad_id, list_id, subject, price_byn (строка, копейки),
 ad_link (полный URL), company_ad (bool), category (строка, напр. "17010"),
 images[] ({path, media_storage:"rms"}) → фото-URL rms.kufar.by/v1/gallery/<path>.
+
+ФИЛЬТРЫ КАТЕГОРИЙ (разведано живьём, tools/probe_*.mjs). В каждом лоте
+ad_parameters[] несёт поле `pu` — это и есть ИМЯ query-параметра. То есть любой
+фильтр, видимый на сайте, доступен через API: cct (тип комплектующих),
+ccvc (модель GPU), cte (приставки/игры), mss (размер обуви), shlgt (длина
+стельки), bca (класс велосипеда), brnd (бренд), cnd (состояние) и т.д.
+Такой фильтр точнее слова в названии: cat=16010&cct=11 отдаёт ЧИСТЫЕ видеокарты
+(1118 лотов, медиана 399 Br), тогда как запрос «rtx 3080» тянет системные блоки
+и завышает медиану. Проверено: без cct медиана 150 Br, с cct=11 — 399 Br, состав
+выборки 100/100 «Видеокарты».
+
+МУЛЬТИЗНАЧЕНИЕ — только через префикс `v.or:`, проверено арифметикой:
+bca=1 → 1056 лотов, bca=5 → 107, bca=v.or:1,5 → 1163 = ровно сумма.
+Формы `1,5` / повтор параметра / `1|5` дают 0 лотов (молча!), `bca[]=` → 422,
+`v.in:` и `or:` → 500. Поэтому список значений тут всегда клеится в `v.or:`.
 """
 from __future__ import annotations
 
@@ -34,22 +49,59 @@ STOPWORDS = (
     "разбит", "битый", "не работает", "нерабоч", "неисправ", "треснут",
 )
 
+# Служебные параметры собираем сами — подписка не должна их перебить через filters
+# (иначе размер выборки/сортировка/цена уедут молча и медиана станет мусором).
+RESERVED_PARAMS = frozenset({"query", "size", "sort", "prc", "cat", "rgn", "cursor"})
 
-def search(query: str, *, cat: Optional[str] = None, rgn: Optional[str] = None,
+
+def _filter_value(v: Any) -> str:
+    """Значение фильтра в форму, которую Kufar реально понимает.
+
+    Список/кортеж или строка через запятую = «любое из» → префикс `v.or:`
+    (единственная рабочая форма мультизначения, см. docstring модуля).
+    Готовые префиксы (`v.or:`, `r:`) и одиночные значения не трогаем.
+    """
+    if isinstance(v, (list, tuple, set)):
+        vals = [str(x).strip() for x in v if str(x).strip()]
+        return f"v.or:{','.join(vals)}" if len(vals) > 1 else (vals[0] if vals else "")
+    s = str(v).strip()
+    if "," in s and ":" not in s:  # "9,10,25" → v.or:9,10,25
+        return "v.or:" + ",".join(p.strip() for p in s.split(",") if p.strip())
+    return s
+
+
+def search(query: str = "", *, cat: Optional[str] = None, rgn: Optional[str] = None,
+           filters: Optional[dict] = None,
            min_byn: Optional[float] = None, max_byn: Optional[float] = None,
            size: int = 200, private_only: bool = True,
            drop_stopwords: bool = True) -> "list[dict]":
-    """Вернуть нормализованные лоты: {id,title,price(BYN),currency,url,is_company,category,image}."""
-    params: dict[str, Any] = {"query": query, "size": max(1, min(size, 200)), "sort": "lst.d"}
+    """Вернуть нормализованные лоты: {id,title,price(BYN),currency,url,is_company,category,image}.
+
+    query необязателен: поиск по одной категории с фильтрами (cat=16010&cct=11)
+    точнее, чем по слову в названии, — берём весь раздел, а не совпадения текста.
+    filters — любые параметры Kufar как есть: {"cct": "11", "mss": [9, 10, 25]}.
+    """
+    params: dict[str, Any] = {"size": max(1, min(size, 200)), "sort": "lst.d"}
+    if query:
+        params["query"] = query
     if cat:
         params["cat"] = cat
     if rgn:
         params["rgn"] = rgn
+    for k, v in (filters or {}).items():
+        if k in RESERVED_PARAMS or v is None or v == "":
+            continue  # служебное или пустое — молча мимо
+        val = _filter_value(v)
+        if val:
+            params[k] = val
     # prc в копейках и требует ОБЕ границы — подставляем широкий диапазон, если одна пуста.
     if min_byn is not None or max_byn is not None:
         lo = int((min_byn if min_byn is not None else 0) * 100)
         hi = int((max_byn if max_byn is not None else 10_000_000) * 100)
         params["prc"] = f"r:{lo},{hi}"
+
+    if not query and not cat:
+        raise ValueError("kufar.search: нужен либо query, либо cat")
 
     r = _get_with_retry(params)
     ads_raw = r.json().get("ads") or []

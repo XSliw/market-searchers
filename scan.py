@@ -132,10 +132,14 @@ def _slim(d: dict) -> dict:
 
 
 def _kufar_found(sub: dict) -> "tuple[list[dict], str]":
-    """Оценить выборку по запросу: каждый лот получает tier/discount/median."""
+    """Оценить выборку подписки: каждый лот получает tier/discount/median.
+
+    Подписка может искать словом (`query`), категорией с фильтрами
+    (`cat` + `filters`) или тем и другим вместе.
+    """
     ads = kufar.search(
-        sub["query"], size=sub.get("size", 200),
-        cat=sub.get("cat"), rgn=sub.get("rgn"),
+        sub.get("query", ""), size=sub.get("size", 200),
+        cat=sub.get("cat"), rgn=sub.get("rgn"), filters=sub.get("filters"),
         min_byn=sub.get("min_byn"), max_byn=sub.get("max_byn"),
         private_only=sub.get("private_only", False),
         drop_stopwords=sub.get("drop_stopwords", True))
@@ -143,7 +147,9 @@ def _kufar_found(sub: dict) -> "tuple[list[dict], str]":
     n_super = sum(1 for d in scored if d["tier"] == "super")
     n_good = sum(1 for d in scored if d["tier"] == "good")
     med = f"{stats['median']:.0f}" if stats.get("median") else "—"
-    return scored, f"лотов={stats['count']} медиана={med} 🔥{n_super} 🟢{n_good}"
+    how = "cat" if sub.get("cat") and not sub.get("query") else (
+        "cat+query" if sub.get("cat") else "query")
+    return scored, f"[{how}] лотов={stats['count']} медиана={med} 🔥{n_super} 🟢{n_good}"
 
 
 def run(dry_run: bool, only_source: "str | None") -> int:
