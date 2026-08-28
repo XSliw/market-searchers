@@ -68,6 +68,23 @@ def send_message(token: str, chat_id: "str | int", text: str,
     return result
 
 
+def send_photo(token: str, chat_id: "str | int", photo: str, caption: str = "",
+               reply_markup: Optional[dict] = None,
+               parse_mode: Optional[str] = "HTML") -> dict:
+    """Отправить фото по URL с подписью (лимит подписи Telegram — 1024 символа).
+
+    photo — прямой URL картинки (Telegram сам её скачает и пройдёт редиректы).
+    Кнопку под фото передавать в reply_markup. При битом URL Bot API вернёт
+    ok:false — вызывающий тогда откатывается на текстовую карточку.
+    """
+    payload: dict[str, Any] = {"chat_id": chat_id, "photo": photo, "caption": caption[:1024]}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    return _call(token, "sendPhoto", payload)
+
+
 def edit_message_text(token: str, chat_id: "str | int", message_id: int, text: str,
                       reply_markup: Optional[dict] = None,
                       parse_mode: Optional[str] = "HTML") -> dict:

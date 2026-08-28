@@ -7,7 +7,8 @@
 - нечёткий поиск подмешивает чехлы/запчасти — сужаем категорией cat и стоп-словами.
 
 Поля ответа (проверены): ad_id, list_id, subject, price_byn (строка, копейки),
-ad_link (полный URL), company_ad (bool), category (строка, напр. "17010").
+ad_link (полный URL), company_ad (bool), category (строка, напр. "17010"),
+images[] ({path, media_storage:"rms"}) → фото-URL rms.kufar.by/v1/gallery/<path>.
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ def search(query: str, *, cat: Optional[str] = None, rgn: Optional[str] = None,
            min_byn: Optional[float] = None, max_byn: Optional[float] = None,
            size: int = 200, private_only: bool = True,
            drop_stopwords: bool = True) -> "list[dict]":
-    """Вернуть нормализованные лоты: {id,title,price(BYN),currency,url,is_company,category}."""
+    """Вернуть нормализованные лоты: {id,title,price(BYN),currency,url,is_company,category,image}."""
     params: dict[str, Any] = {"query": query, "size": max(1, min(size, 200)), "sort": "lst.d"}
     if cat:
         params["cat"] = cat
@@ -80,7 +81,22 @@ def _normalize(ad: dict) -> Optional[dict]:
         "url": ad.get("ad_link") or f"https://www.kufar.by/item/{ad_id}",
         "is_company": bool(ad.get("company_ad")),
         "category": _category_of(ad),
+        "image": _image_url(ad),
     }
+
+
+def _image_url(ad: dict) -> Optional[str]:
+    """Первое фото объявления как URL для Telegram sendPhoto.
+
+    Kufar кладёт картинки в images[] c полем path; host rms.kufar.by отдаёт
+    их через 302 на rmsN.kufar.by (Telegram сам ходит по редиректу). Нет фото
+    → None, сканер тогда шлёт карточку текстом.
+    """
+    for im in ad.get("images") or []:
+        p = im.get("path")
+        if p:
+            return f"https://rms.kufar.by/v1/gallery/{p}"
+    return None
 
 
 def _category_of(ad: dict) -> str:

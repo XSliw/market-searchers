@@ -5,13 +5,24 @@
       "id": "iphone13",
       "source": "kufar",
       "enabled": true,
+      "mode": "all",
+      "label": "iPhone 13",
       "query": "iphone 13",
       "cat": "17010",
       "rgn": "7",
       "min_byn": 50,
-      "max_byn": 5000,
-      "threshold_pct": 30,
-      "private_only": true
+      "max_byn": 5000
+    },
+    {
+      "id": "polar",
+      "source": "kufar",
+      "enabled": true,
+      "mode": "all",
+      "label": "Часы Polar",
+      "query": "часы polar",
+      "rgn": "7",
+      "min_byn": 5,
+      "max_byn": 5000
     },
     {
       "id": "switch",
