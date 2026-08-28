@@ -34,8 +34,8 @@
     { "id": "ryzen5600", "source": "kufar", "enabled": true, "notify": "good", "label": "Ryzen 5 5600", "query": "ryzen 5 5600", "rgn": "7", "tag": "комплектующие", "min_byn": 70, "max_byn": 450, "min_deal_byn": 100 },
     { "id": "ryzen5800x3d", "source": "kufar", "enabled": true, "notify": "good", "label": "Ryzen 7 5800X3D", "query": "ryzen 7 5800x3d", "rgn": "7", "tag": "комплектующие", "min_byn": 180, "max_byn": 750, "min_deal_byn": 250 },
     { "id": "ryzen7800x3d", "source": "kufar", "enabled": true, "notify": "good", "label": "Ryzen 7 7800X3D", "query": "ryzen 7 7800x3d", "rgn": "7", "tag": "комплектующие", "min_byn": 350, "max_byn": 1500, "min_deal_byn": 450 },
-    { "id": "inteli5", "source": "kufar", "enabled": true, "notify": "good", "label": "Core i5 12400F", "query": "intel core i5 12400", "rgn": "7", "tag": "комплектующие", "min_byn": 70, "max_byn": 550, "min_deal_byn": 100 },
-    { "id": "inteli7", "source": "kufar", "enabled": true, "notify": "good", "label": "Core i7 13700", "query": "intel core i7 13700", "rgn": "7", "tag": "комплектующие", "min_byn": 180, "max_byn": 950, "min_deal_byn": 300 },
+    { "id": "inteli5", "source": "kufar", "enabled": true, "notify": "good", "label": "Процессоры Intel i5", "query": "процессор i5", "rgn": "7", "tag": "комплектующие", "min_byn": 70, "max_byn": 550, "min_deal_byn": 100 },
+    { "id": "inteli7", "source": "kufar", "enabled": true, "notify": "good", "label": "Процессоры Intel i7", "query": "процессор i7", "rgn": "7", "tag": "комплектующие", "min_byn": 120, "max_byn": 950, "min_deal_byn": 250 },
 
     { "id": "gaming_pc", "source": "kufar", "enabled": true, "notify": "good", "label": "Игровой компьютер", "query": "игровой компьютер", "rgn": "7", "tag": "компы", "min_byn": 400, "min_deal_byn": 400 },
     { "id": "sysblock", "source": "kufar", "enabled": true, "notify": "good", "label": "Игровой системный блок", "query": "игровой системный блок", "rgn": "7", "tag": "компы", "min_byn": 400, "min_deal_byn": 400 },
@@ -62,7 +62,7 @@
     { "id": "gopro", "source": "kufar", "enabled": true, "notify": "good", "label": "GoPro Hero", "query": "gopro hero", "rgn": "7", "tag": "фото", "min_byn": 150, "min_deal_byn": 180 },
     { "id": "sonya7", "source": "kufar", "enabled": true, "notify": "good", "label": "Sony A7", "query": "sony a7", "rgn": "7", "tag": "фото", "min_byn": 500, "max_byn": 5000, "min_deal_byn": 800 },
 
-    { "id": "sonywh", "source": "kufar", "enabled": true, "notify": "good", "label": "Sony WH-1000XM", "query": "wh-1000xm", "rgn": "7", "tag": "аудио", "min_byn": 120, "min_deal_byn": 180 },
+    { "id": "sonywh", "source": "kufar", "enabled": true, "notify": "good", "label": "Sony WH-1000XM", "query": "sony wh-1000", "rgn": "7", "tag": "аудио", "min_byn": 120, "min_deal_byn": 180 },
     { "id": "bose", "source": "kufar", "enabled": true, "notify": "good", "label": "Bose QuietComfort", "query": "bose quietcomfort", "rgn": "7", "tag": "аудио", "min_byn": 120, "min_deal_byn": 180 },
 
     { "id": "dyson", "source": "kufar", "enabled": true, "notify": "super", "label": "Dyson", "query": "dyson", "rgn": "7", "tag": "техника", "min_byn": 150, "min_deal_byn": 180 },
