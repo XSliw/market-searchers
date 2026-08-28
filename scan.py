@@ -64,8 +64,8 @@ def run(dry_run: bool, only_source: "str | None") -> int:
     state.setdefault("seen", {})
     state.setdefault("deals", [])
 
-    if config.get("paused"):
-        print("paused — прогон пропущен")
+    if config.get("paused") and not dry_run:
+        print("paused — прогон пропущен (dry-run игнорирует паузу)")
         return 0
 
     started = now_iso()
