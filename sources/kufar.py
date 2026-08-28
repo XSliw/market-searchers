@@ -53,6 +53,10 @@ def search(query: str, *, cat: Optional[str] = None, rgn: Optional[str] = None,
         norm = _normalize(ad)
         if norm is None:
             continue
+        # Цена не указана / 0 Br — это «договорная» или ads-услуги (ремонт,
+        # скупка, вывоз): для оценщика по цене они пусты и лишь сорят выборку.
+        if norm["price"] is None or norm["price"] <= 0:
+            continue
         if cat and str(norm["category"]) != str(cat):
             continue
         if private_only and norm["is_company"]:
