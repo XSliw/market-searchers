@@ -143,20 +143,21 @@ def _menu(source: str) -> "tuple[str, dict]":
         sid = s.get("id")
         on = s.get("enabled", True)
         if source == "kufar":
-            extra = f"−{s.get('threshold_pct', 30)}%"
+            extra = f"🔔 {s.get('notify', 'all')}"
         else:
             mp = s.get("max_price_yen")
             extra = f"≤{mp}¥" if mp else "без потолка"
         lines.append(f"{'✅' if on else '⬜'} <b>{sid}</b> — «{s.get('query','')}» · {extra}")
         row = [{"text": f"{'✅' if on else '⬜'} {sid}", "callback_data": f"t:{sid}"}]
         if source == "kufar":
-            row.append({"text": "−5%", "callback_data": f"p:{sid}:-"})
-            row.append({"text": "+5%", "callback_data": f"p:{sid}:+"})
+            row.append({"text": f"🔔 {s.get('notify','all')}", "callback_data": f"n:{sid}"})
         else:
             row.append({"text": "−5k¥", "callback_data": f"m:{sid}:-"})
             row.append({"text": "+5k¥", "callback_data": f"m:{sid}:+"})
         kb.append(row)
 
+    if source == "kufar":
+        kb.append([{"text": "🔥 Супервыгодные", "callback_data": "hot"}])
     kb.append([{"text": "🔄 Обновить", "callback_data": "refresh"}])
     return "\n".join(lines), {"inline_keyboard": kb}
 
@@ -195,6 +196,24 @@ def _deals_text(source: str, limit: int = 10) -> str:
     return "\n".join(out)
 
 
+def _hot_text(limit: int = 15) -> str:
+    """Накопленные 🔥 супервыгодные (та самая «вкладка»)."""
+    st = _load_state()
+    hot = st.get("hot", [])[-limit:]
+    if not hot:
+        return ("🔥 <b>Супервыгодные</b>\n\nПока пусто. Как появится лот заметно ниже "
+                "медианы — он придёт с меткой 🔥 и хэштегом #супервыгодно и ляжет сюда. "
+                "В чате их можно найти поиском по <code>#супервыгодно</code>.")
+    out = ["🔥 <b>Супервыгодные</b> — последние", ""]
+    for d in reversed(hot):
+        disc = d.get("discount_pct")
+        tag = f" (−{abs(disc):g}%)" if disc is not None else ""
+        price = f"{d['price']:g} Br" if d.get("price") is not None else "цена н/д"
+        lbl = f" · {_esc(d['label'])}" if d.get("label") else ""
+        out.append(f"• {_esc(d.get('title',''))} — {price}{tag}{lbl}\n{d.get('url','')}")
+    return "\n".join(out)
+
+
 def _help_text(source: str) -> str:
     return ("\n".join([
         f"🔎 <b>market-searchers — {source}</b>",
@@ -203,6 +222,7 @@ def _help_text(source: str) -> str:
         "/menu — подписки, пороги, пауза",
         "/status — время последнего прогона",
         "/deals — последние найденные сделки",
+        "/hot — накопленные 🔥 супервыгодные (или ищи в чате #супервыгодно)",
     ]))
 
 
@@ -236,6 +256,8 @@ def _handle_command(source: str, token: str, chat_id: int, text: str) -> None:
         telegram.send_message(token, chat_id, _status_text(source))
     elif cmd == "deals":
         telegram.send_message(token, chat_id, _deals_text(source))
+    elif cmd == "hot":
+        telegram.send_message(token, chat_id, _hot_text())
     else:
         telegram.send_message(token, chat_id, _help_text(source))
 
@@ -270,6 +292,17 @@ def _handle_callback(source: str, token: str, cq: dict) -> None:
             nxt = cur + delta
             s["max_price_yen"] = None if nxt <= 0 else nxt
         err = _edit_config(_mutate_sub(source, sid, _bump))
+    elif data.startswith("n:") and source == "kufar":
+        sid = data[2:]
+
+        def _cycle(s: dict) -> None:
+            order = ["all", "good", "super"]
+            cur = (s.get("notify") or "all").lower()
+            s["notify"] = order[(order.index(cur) + 1) % len(order)] if cur in order else "all"
+        err = _edit_config(_mutate_sub(source, sid, _cycle))
+    elif data == "hot":
+        if chat_id:
+            telegram.send_message(token, chat_id, _hot_text())
 
     telegram.answer_callback(token, cq_id, text=err or "готово")
     if chat_id and message_id:  # перерисовать меню свежими значениями

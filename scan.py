@@ -4,13 +4,15 @@
 уведомления в Bot API соответствующего бота и коммитит state.json.
 Kufar не требует секретов — потому dry-run проверяется в CI без Telegram.
 
-Kufar-подписка знает два режима (поле "mode"):
-  - "all"   — любое новое объявление по запросу, с фото и кнопкой (как старый
-              бот): много лотов, без медианы;
-  - "deals" — только дешевле обрезанной по IQR медианы на threshold_pct.
-Первый прогон новой подписки в режиме "all" не спамит всё разом: он лишь
-запоминает базовую линию (seen), а шлёт только то, что появится потом. На один
-прогон одной подписки шлём не больше MAX_NOTIFY (потолок от вала).
+Kufar — единый режим «оценка выгодности». По каждому запросу берём выборку
+лотов, считаем обрезанную по IQR медиану и клеим каждому лоту уровень:
+  🔥 супервыгодно / 🟢 выгодно / ⚪️ рынок / 🔺 дороговато / ⚠️ подозрительно.
+Что реально слать — решает поле подписки `notify`:
+  "all" (любое новое) | "good" (только 🔥/🟢) | "super" (только 🔥).
+Супервыгодные копятся в state["hot"] и несут хэштег #супервыгодно (поиск в
+чате находит их разом). Первый прогон подписки лишь запоминает базовую линию
+(не спамит всё разом); на один прогон одной подписки шлём не больше MAX_NOTIFY,
+причём сперва лучшие сделки (порядок по TIER_RANK).
 
 Запуск:  python scan.py [--dry-run] [--source kufar|sendico]
 """
@@ -29,7 +31,16 @@ CONFIG_PATH = "config.json"
 STATE_PATH = "state.json"
 SEEN_CAP = 400        # сколько id помним на подписку (кольцо)
 DEALS_CAP = 60        # сколько последних сделок держим для /deals
+HOT_CAP = 120         # сколько супервыгодных копим для /hot и поиска в чате
 MAX_NOTIFY = 10       # потолок уведомлений на подписку за один прогон
+
+# notify подписки → множество уровней, которые реально уходят в чат.
+NOTIFY_TIERS = {
+    "all":   {"super", "good", "market", "pricey", "low"},
+    "good":  {"super", "good"},
+    "deals": {"super", "good"},
+    "super": {"super"},
+}
 
 
 def now_iso() -> str:
@@ -55,17 +66,39 @@ def _price_br(p) -> str:
     return f"{s} Br"
 
 
-def _fmt_kufar(d: dict, label: str) -> str:
-    """Карточка как у старого бота: заголовок · название · цена · поиск (+скидка)."""
-    lines = [
-        "🆕 <b>НОВОЕ · НАБЛЮДЕНИЕ</b>",
-        f"🛍 {_esc(d.get('title') or '')}",
-        f"💵 Цена: {_price_br(d.get('price'))}",
-    ]
+def _tier_line(d: dict) -> str:
+    emoji, word, _ = deals.TIERS.get(d.get("tier", "na"), deals.TIERS["na"])
+    disc = d.get("discount_pct")
+    if disc is None:
+        return f"{emoji} <b>{word}</b>"
+    sign = "−" if disc >= 0 else "+"
+    return f"{emoji} <b>{word}</b> · {sign}{abs(disc):g}% от медианы"
+
+
+def _tags(d: dict, sub: dict) -> str:
+    """Хэштеги для поиска в чате: #супервыгодно/#выгодно + категорийный тег."""
+    _, _, base = deals.TIERS.get(d.get("tier", "na"), deals.TIERS["na"])
+    if not base:
+        return ""
+    parts = [f"#{base}"]
+    tag = sub.get("tag")
+    if tag:
+        parts.append(f"#{tag}")
+    return " ".join(parts)
+
+
+def _fmt_kufar(d: dict, sub: dict) -> str:
+    """Карточка: уровень выгодности · название · цена/медиана · поиск (+хэштеги)."""
+    label = sub.get("label") or sub.get("query") or ""
+    lines = [_tier_line(d), f"🛍 {_esc(d.get('title') or '')}"]
+    med = d.get("median")
+    lines.append(f"💵 {_price_br(d.get('price'))}"
+                 + (f"  ·  медиана ~{med:.0f} Br" if med else ""))
     if label:
         lines.append(f"🔍 Поиск: <i>{_esc(label)}</i>")
-    if d.get("discount_pct") and d.get("median"):
-        lines.append(f"📉 На {d['discount_pct']}% ниже медианы ({d['median']:.0f} Br)")
+    tags = _tags(d, sub)
+    if tags:
+        lines.append(tags)
     return "\n".join(lines)
 
 
@@ -78,8 +111,7 @@ def _fmt_sendico(d: dict) -> str:
 def _notify(src: str, token: str, chat: str, d: dict, sub: dict) -> dict:
     """Отправить одну карточку. Kufar — фото+кнопка, с откатом на текст."""
     if src == "kufar":
-        label = sub.get("label") or sub.get("query") or ""
-        caption = _fmt_kufar(d, label)
+        caption = _fmt_kufar(d, sub)
         url = d.get("url") or ""
         btn = ({"inline_keyboard": [[{"text": "🔗 Открыть объявление", "url": url}]]}
                if url else None)
@@ -95,33 +127,31 @@ def _notify(src: str, token: str, chat: str, d: dict, sub: dict) -> dict:
 
 
 def _slim(d: dict) -> dict:
-    keep = ("id", "title", "price", "currency", "url", "median", "discount_pct")
+    keep = ("id", "title", "price", "currency", "url", "median", "discount_pct", "tier")
     return {k: d[k] for k in keep if k in d}
 
 
 def _kufar_found(sub: dict) -> "tuple[list[dict], str]":
-    """Вернуть (кандидаты, строка-лог) по режиму подписки."""
-    mode = (sub.get("mode") or "all").lower()
-    common = dict(cat=sub.get("cat"), rgn=sub.get("rgn"),
-                  min_byn=sub.get("min_byn"), max_byn=sub.get("max_byn"))
-    if mode == "deals":
-        ads = kufar.search(sub["query"], size=sub.get("size", 200),
-                           private_only=sub.get("private_only", True), **common)
-        found, stats = deals.kufar_deals(ads, sub.get("threshold_pct", 30))
-        return found, (f"режим=deals лотов={stats['count']} "
-                       f"медиана={stats['median']} сделок={len(found)}")
-    # "all" — любое новое, как старый бот: без медианы, без стоп-слов, частник+компания
-    found = kufar.search(sub["query"], size=sub.get("size", 60),
-                         private_only=sub.get("private_only", False),
-                         drop_stopwords=sub.get("drop_stopwords", False), **common)
-    return found, f"режим=all лотов={len(found)}"
+    """Оценить выборку по запросу: каждый лот получает tier/discount/median."""
+    ads = kufar.search(
+        sub["query"], size=sub.get("size", 200),
+        cat=sub.get("cat"), rgn=sub.get("rgn"),
+        min_byn=sub.get("min_byn"), max_byn=sub.get("max_byn"),
+        private_only=sub.get("private_only", False),
+        drop_stopwords=sub.get("drop_stopwords", False))
+    scored, stats = deals.score_ads(ads)
+    n_super = sum(1 for d in scored if d["tier"] == "super")
+    n_good = sum(1 for d in scored if d["tier"] == "good")
+    med = f"{stats['median']:.0f}" if stats.get("median") else "—"
+    return scored, f"лотов={stats['count']} медиана={med} 🔥{n_super} 🟢{n_good}"
 
 
 def run(dry_run: bool, only_source: "str | None") -> int:
     config = store.load(CONFIG_PATH, {"subscriptions": [], "paused": False})
-    state = store.load(STATE_PATH, {"runs": {}, "seen": {}, "deals": []})
+    state = store.load(STATE_PATH, {"runs": {}, "seen": {}, "deals": [], "hot": []})
     state.setdefault("seen", {})
     state.setdefault("deals", [])
+    state.setdefault("hot", [])
 
     if config.get("paused") and not dry_run:
         print("paused — прогон пропущен (dry-run игнорирует паузу)")
@@ -143,6 +173,8 @@ def run(dry_run: bool, only_source: "str | None") -> int:
         try:
             if src == "kufar":
                 found, logline = _kufar_found(sub)
+                allowed = NOTIFY_TIERS.get(
+                    (sub.get("notify") or "all").lower(), NOTIFY_TIERS["all"])
                 token, chat = _env("KUFAR_BOT_TOKEN"), _env("KUFAR_CHAT_ID")
             elif src == "sendico":
                 if sendico_client is None:
@@ -150,6 +182,9 @@ def run(dry_run: bool, only_source: "str | None") -> int:
                 items = sendico_client.search(sub["query"], debug=dry_run)
                 found = [i for i in items
                          if deals.sendico_price_ok(i, sub.get("max_price_yen"))]
+                for i in found:
+                    i.setdefault("tier", "na")
+                allowed = None  # sendico — любое новое совпадение
                 logline = f"найдено={len(found)}"
                 token, chat = _env("SENDICO_BOT_TOKEN"), _env("SENDICO_CHAT_ID")
             else:
@@ -164,28 +199,37 @@ def run(dry_run: bool, only_source: "str | None") -> int:
                 print(f"[{key}] базлайн={len(found)} (первый прогон, не шлём)")
                 continue
 
-            fresh = [d for d in found if d["id"] not in seen]
-            notify = fresh[:MAX_NOTIFY]
-            if len(fresh) > len(notify):
-                print(f"[{key}] новых={len(fresh)} > потолок {MAX_NOTIFY}: "
-                      f"шлём {len(notify)}, остальные помечаем виденными")
+            new = [d for d in found if d["id"] not in seen]
+            pool = [d for d in new if allowed is None or d.get("tier") in allowed]
+            pool.sort(key=lambda d: (deals.TIER_RANK.get(d.get("tier", "na"), 9),
+                                     -(d.get("discount_pct") or 0)))
+            notify = pool[:MAX_NOTIFY]
+            if len(pool) > len(notify):
+                print(f"[{key}] к отправке={len(pool)} > потолок {MAX_NOTIFY}: "
+                      f"шлём лучшие {len(notify)}")
             for d in notify:
-                state["deals"].append(
-                    {"found_at": started, "source": src, "sub_id": sub.get("id"), **_slim(d)})
+                rec = {"found_at": started, "source": src, "sub_id": sub.get("id"),
+                       "label": sub.get("label"), **_slim(d)}
+                state["deals"].append(rec)
+                if d.get("tier") == "super":
+                    state["hot"].append(rec)
                 if not dry_run and token and chat:
                     res = _notify(src, token, chat, d, sub)
                     if not res.get("ok"):
                         errors.append(f"{key}: telegram {res.get('description')}")
-            state["seen"][key] = (list(seen) + [d["id"] for d in fresh])[-SEEN_CAP:]
+            # Все новые (любого уровня) помечаем виденными — чтобы не пересматривать.
+            state["seen"][key] = (list(seen) + [d["id"] for d in new])[-SEEN_CAP:]
             total_new += len(notify)
             note = " (dry-run, не отправлено)" if dry_run else ""
-            print(f"[{key}] новых={len(fresh)} отправлено={len(notify)}{note}")
+            print(f"[{key}] новых={len(new)} к отправке={len(pool)} "
+                  f"отправлено={len(notify)}{note}")
         except Exception as e:  # одна кривая подписка не должна ронять прогон
             errors.append(f"{key}: {type(e).__name__}: {e}")
             print("ERROR", key, repr(e))
             traceback.print_exc()
 
     state["deals"] = state["deals"][-DEALS_CAP:]
+    state["hot"] = state["hot"][-HOT_CAP:]
     state["runs"] = {
         "last_started": started, "last_finished": now_iso(),
         "ok": not errors, "new": total_new, "note": "; ".join(errors)[:500],
