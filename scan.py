@@ -192,6 +192,19 @@ def run(dry_run: bool, only_source: "str | None") -> int:
                 continue
             print(f"[{key}] {logline}")
 
+            # Живой предпросмотр в dry-run: 3 лучших лота (по рангу/скидке),
+            # независимо от seen — видно, как выглядят карточки и что ловим.
+            if dry_run and src == "kufar" and found:
+                best = sorted(found, key=lambda d: (
+                    deals.TIER_RANK.get(d.get("tier", "na"), 9),
+                    -(d.get("discount_pct") or 0)))
+                for d in best[:3]:
+                    emoji = deals.TIERS.get(d.get("tier", "na"), deals.TIERS["na"])[0]
+                    disc = d.get("discount_pct")
+                    ds = f"{disc:+g}%" if disc is not None else "  —"
+                    print(f"    {emoji} {ds:>6} · {_price_br(d.get('price')):>9} · "
+                          f"{(d.get('title') or '')[:52]} · {d.get('url','')}")
+
             # Первый прогон подписки: запомнить базу, не слать всё разом.
             # В dry-run базу не пишем — показываем, что бы улетело.
             if key not in state["seen"] and not dry_run:
