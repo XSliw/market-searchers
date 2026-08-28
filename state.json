@@ -1,5 +1,67 @@
 {
-  "deals": [],
-  "runs": {},
-  "seen": {}
+  "deals": [
+    {
+      "currency": "BYN",
+      "discount_pct": 62.5,
+      "found_at": "2026-08-28 07:34:49Z",
+      "id": "1082407838",
+      "median": 800.0,
+      "price": 300.0,
+      "source": "kufar",
+      "sub_id": "iphone13",
+      "title": "IPhone 13 128gb",
+      "url": "https://www.kufar.by/item/1082407838"
+    },
+    {
+      "currency": "BYN",
+      "discount_pct": 50.0,
+      "found_at": "2026-08-28 07:34:49Z",
+      "id": "1082870764",
+      "median": 800.0,
+      "price": 400.0,
+      "source": "kufar",
+      "sub_id": "iphone13",
+      "title": "Айфон 13",
+      "url": "https://www.kufar.by/item/1082870764"
+    },
+    {
+      "currency": "BYN",
+      "discount_pct": 31.2,
+      "found_at": "2026-08-28 07:34:49Z",
+      "id": "1082814711",
+      "median": 800.0,
+      "price": 550.0,
+      "source": "kufar",
+      "sub_id": "iphone13",
+      "title": "iPhone 13",
+      "url": "https://www.kufar.by/item/1082814711"
+    },
+    {
+      "currency": "BYN",
+      "discount_pct": 31.2,
+      "found_at": "2026-08-28 07:34:49Z",
+      "id": "1082475544",
+      "median": 800.0,
+      "price": 550.0,
+      "source": "kufar",
+      "sub_id": "iphone13",
+      "title": "iPhone 13 mini ( BLACK )",
+      "url": "https://www.kufar.by/item/1082475544"
+    }
+  ],
+  "runs": {
+    "last_finished": "2026-08-28 07:34:56Z",
+    "last_started": "2026-08-28 07:34:49Z",
+    "new": 4,
+    "note": "",
+    "ok": true
+  },
+  "seen": {
+    "kufar:iphone13": [
+      "1082407838",
+      "1082870764",
+      "1082814711",
+      "1082475544"
+    ]
+  }
 }
