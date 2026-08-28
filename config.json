@@ -1,0 +1,24 @@
+{
+  "paused": false,
+  "subscriptions": [
+    {
+      "id": "iphone13",
+      "source": "kufar",
+      "enabled": true,
+      "query": "iphone 13",
+      "cat": "17010",
+      "rgn": "7",
+      "min_byn": 50,
+      "max_byn": 5000,
+      "threshold_pct": 30,
+      "private_only": true
+    },
+    {
+      "id": "switch",
+      "source": "sendico",
+      "enabled": true,
+      "query": "nintendo switch",
+      "max_price_yen": null
+    }
+  ]
+}
