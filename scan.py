@@ -138,8 +138,8 @@ def _kufar_found(sub: dict) -> "tuple[list[dict], str]":
         cat=sub.get("cat"), rgn=sub.get("rgn"),
         min_byn=sub.get("min_byn"), max_byn=sub.get("max_byn"),
         private_only=sub.get("private_only", False),
-        drop_stopwords=sub.get("drop_stopwords", False))
-    scored, stats = deals.score_ads(ads)
+        drop_stopwords=sub.get("drop_stopwords", True))
+    scored, stats = deals.score_ads(ads, min_deal=sub.get("min_deal_byn", deals.MIN_DEAL_BYN))
     n_super = sum(1 for d in scored if d["tier"] == "super")
     n_good = sum(1 for d in scored if d["tier"] == "good")
     med = f"{stats['median']:.0f}" if stats.get("median") else "—"

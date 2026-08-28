@@ -69,8 +69,9 @@ def kufar_deals(ads: "list[dict]", threshold_pct: float) -> "tuple[list[dict], d
 
 
 # --- Уровни выгодности (общие для сканера и вебхука) -------------------------
-SUPER_PCT = 35   # ниже медианы на столько и глубже → 🔥 супервыгодно
-GOOD_PCT = 15    # ниже на столько → 🟢 выгодно (в пределах ± этого — рынок)
+SUPER_PCT = 40   # ниже медианы на столько и глубже → 🔥 супервыгодно
+GOOD_PCT = 20    # ниже на столько → 🟢 выгодно (в пределах ± этого — рынок)
+MIN_DEAL_BYN = 20  # дешевле — «мелочь»: не сделка (гасит вал копеечного хлама)
 
 # tier → (эмодзи, слово, базовый хэштег|None). Хэштег есть только у super/good,
 # чтобы «#супервыгодно» в поиске чата собирал именно топ.
@@ -87,21 +88,25 @@ TIER_RANK = {"super": 0, "good": 1, "market": 2, "low": 3, "pricey": 4, "na": 5}
 
 
 def classify(price: Optional[float], median: Optional[float], iqr_lo: Optional[float],
-             *, super_pct: float = SUPER_PCT,
-             good_pct: float = GOOD_PCT) -> "tuple[str, Optional[float]]":
+             *, super_pct: float = SUPER_PCT, good_pct: float = GOOD_PCT,
+             min_deal: float = MIN_DEAL_BYN) -> "tuple[str, Optional[float]]":
     """Уровень выгодности лота относительно медианы. Вернуть (tier, discount_pct).
 
     discount_pct > 0 — дешевле медианы, < 0 — дороже. По возрастанию цены:
     low (ниже границы IQR — «слишком дёшево», приманка/запчасти) < super < good
-    < market < pricey.
+    < market < pricey. Сделкой (🔥/🟢) считаем только лоты дороже min_deal —
+    иначе «дешевле медианы» ловит копеечный хлам (кабели, мелочь), а не реально
+    недооценённый товар.
     """
     if price is None or not median:
         return "na", None
     disc = round((1 - price / median) * 100, 1)
     floor = iqr_lo if iqr_lo is not None else 0
-    if price < floor:
-        return "low", disc
-    if disc >= super_pct:
+    if price < min_deal:
+        return "market", disc          # мелочь — не сделка
+    if floor > 0 and price < floor:
+        return "low", disc             # ниже IQR — приманка/битое
+    if disc >= super_pct and price >= floor:
         return "super", disc
     if disc >= good_pct:
         return "good", disc
@@ -110,18 +115,20 @@ def classify(price: Optional[float], median: Optional[float], iqr_lo: Optional[f
     return "market", disc
 
 
-def score_ads(ads: "list[dict]") -> "tuple[list[dict], dict]":
+def score_ads(ads: "list[dict]", *,
+              min_deal: float = MIN_DEAL_BYN) -> "tuple[list[dict], dict]":
     """Проставить каждому лоту tier/discount_pct/median по обрезанной медиане.
 
     Вернуть (ads_scored, stats). Исходный порядок (по свежести) сохраняем —
     очередь показа выбирает сканер. Медиана обрезана по IQR (trimmed_median).
+    min_deal — порог «мелочи»: дешевле него сделкой не считаем.
     """
     prices = [a["price"] for a in ads if a.get("price")]
     median, lo, hi = trimmed_median(prices)
     stats = {"count": len(prices), "median": median, "iqr_lo": lo, "iqr_hi": hi}
     out = []
     for a in ads:
-        tier, disc = classify(a.get("price"), median, lo)
+        tier, disc = classify(a.get("price"), median, lo, min_deal=min_deal)
         d = dict(a)
         d["tier"] = tier
         d["discount_pct"] = disc
