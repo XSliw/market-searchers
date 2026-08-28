@@ -62,7 +62,7 @@
     { "id": "gopro", "source": "kufar", "enabled": true, "notify": "good", "label": "GoPro Hero", "query": "gopro hero", "rgn": "7", "tag": "фото", "min_byn": 150, "min_deal_byn": 180 },
     { "id": "sonya7", "source": "kufar", "enabled": true, "notify": "good", "label": "Sony A7", "query": "sony a7", "rgn": "7", "tag": "фото", "min_byn": 500, "max_byn": 5000, "min_deal_byn": 800 },
 
-    { "id": "sonywh", "source": "kufar", "enabled": true, "notify": "good", "label": "Sony WH-1000XM", "query": "sony wh-1000", "rgn": "7", "tag": "аудио", "min_byn": 120, "min_deal_byn": 180 },
+    { "id": "sonywh", "source": "kufar", "enabled": true, "notify": "good", "label": "Sony наушники", "query": "sony наушники", "rgn": "7", "tag": "аудио", "min_byn": 120, "min_deal_byn": 180 },
     { "id": "bose", "source": "kufar", "enabled": true, "notify": "good", "label": "Bose QuietComfort", "query": "bose quietcomfort", "rgn": "7", "tag": "аудио", "min_byn": 120, "min_deal_byn": 180 },
 
     { "id": "dyson", "source": "kufar", "enabled": true, "notify": "super", "label": "Dyson", "query": "dyson", "rgn": "7", "tag": "техника", "min_byn": 150, "min_deal_byn": 180 },
