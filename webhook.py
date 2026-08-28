@@ -79,7 +79,19 @@ _recent_update_ids: deque = deque(maxlen=512)
 # Чтение/запись конфигурации и состояния
 # --------------------------------------------------------------------------
 def _load_config_display() -> dict:
-    """Свежий config.json для показа: сперва raw GitHub, потом локальный файл."""
+    """Свежий config.json для показа/перерисовки меню.
+
+    После правки через Contents API кэш raw CDN отстаёт (~минуты), и меню
+    показало бы старое состояние тумблера. Поэтому при наличии токена читаем
+    через Contents API (свежо), иначе — raw, иначе локальный файл.
+    """
+    if settings.gh_token and settings.github_repo:
+        try:
+            content, _ = gh.get_file(settings.github_repo, CONFIG_PATH, settings.gh_token)
+            if content:
+                return json.loads(content)
+        except Exception:
+            pass
     if settings.github_repo:
         raw = gh.read_raw(settings.github_repo, CONFIG_PATH)
         if raw:
@@ -127,39 +139,112 @@ def _edit_config(mutate: "Callable[[dict], None]") -> Optional[str]:
 # --------------------------------------------------------------------------
 # Рендер меню и текстов
 # --------------------------------------------------------------------------
+FLAT_MENU_MAX = 12    # до скольких подписок показываем плоским списком
+MENU_GROUP_COLS = 2   # категорий в ряд в верхнем меню
+
+
+def _sub_line_row(s: dict, source: str) -> "tuple[str, list[dict]]":
+    """Строка-описание подписки + ряд кнопок управления ею."""
+    sid = s.get("id")
+    on = s.get("enabled", True)
+    if source == "kufar":
+        extra = f"🔔 {s.get('notify', 'all')}"
+    else:
+        mp = s.get("max_price_yen")
+        extra = f"≤{mp}¥" if mp else "без потолка"
+    label = s.get("label") or s.get("query", "")
+    line = f"{'✅' if on else '⬜'} <b>{sid}</b> — {_esc(label)} · {extra}"
+    row = [{"text": f"{'✅' if on else '⬜'} {sid}", "callback_data": f"t:{sid}"}]
+    if source == "kufar":
+        row.append({"text": f"🔔 {s.get('notify','all')}", "callback_data": f"n:{sid}"})
+    else:
+        row.append({"text": "−5k¥", "callback_data": f"m:{sid}:-"})
+        row.append({"text": "+5k¥", "callback_data": f"m:{sid}:+"})
+    return line, row
+
+
+def _pause_row(paused: bool) -> "list[dict]":
+    return [{"text": "▶️ Снять паузу" if paused else "⏸ Поставить паузу",
+             "callback_data": "pause"}]
+
+
 def _menu(source: str) -> "tuple[str, dict]":
+    """Верхнее меню. Мало подписок (sendico) — плоский список; много (kufar) —
+    сетка категорий-тегов, чтобы не упереться в лимит кнопок Telegram."""
     cfg = _load_config_display()
     paused = cfg.get("paused", False)
     subs = [s for s in cfg.get("subscriptions", []) if s.get("source") == source]
-
     lines = [f"⚙️ <b>Меню — {source}</b>",
              f"Глобально: {'⏸ на паузе' if paused else '▶️ активно'}", ""]
-    kb: list[list[dict]] = [[{"text": "▶️ Снять паузу" if paused else "⏸ Поставить паузу",
-                              "callback_data": "pause"}]]
+    kb: list[list[dict]] = [_pause_row(paused)]
 
+    if source == "kufar" and len(subs) > FLAT_MENU_MAX:
+        total = len(subs)
+        on_total = sum(1 for s in subs if s.get("enabled", True))
+        groups: "dict[str, list[dict]]" = {}
+        for s in subs:
+            groups.setdefault(s.get("tag") or "разное", []).append(s)
+        lines.append(f"Категорий: {len(groups)} · подписок: {on_total}/{total} вкл.")
+        lines.append("Выбери категорию, чтобы включить/выключить и настроить запросы:")
+        row: list[dict] = []
+        for tag, items in groups.items():
+            on = sum(1 for s in items if s.get("enabled", True))
+            row.append({"text": f"#{tag} · {on}/{len(items)}",
+                        "callback_data": f"g:{tag}"})
+            if len(row) == MENU_GROUP_COLS:
+                kb.append(row)
+                row = []
+        if row:
+            kb.append(row)
+        kb.append([{"text": "🔥 Супервыгодные", "callback_data": "hot"}])
+        kb.append([{"text": "🔄 Обновить", "callback_data": "refresh"}])
+        return "\n".join(lines), {"inline_keyboard": kb}
+
+    # Плоский список (sendico или мало подписок).
     if not subs:
         lines.append("Подписок этого источника нет.")
     for s in subs:
-        sid = s.get("id")
-        on = s.get("enabled", True)
-        if source == "kufar":
-            extra = f"🔔 {s.get('notify', 'all')}"
-        else:
-            mp = s.get("max_price_yen")
-            extra = f"≤{mp}¥" if mp else "без потолка"
-        lines.append(f"{'✅' if on else '⬜'} <b>{sid}</b> — «{s.get('query','')}» · {extra}")
-        row = [{"text": f"{'✅' if on else '⬜'} {sid}", "callback_data": f"t:{sid}"}]
-        if source == "kufar":
-            row.append({"text": f"🔔 {s.get('notify','all')}", "callback_data": f"n:{sid}"})
-        else:
-            row.append({"text": "−5k¥", "callback_data": f"m:{sid}:-"})
-            row.append({"text": "+5k¥", "callback_data": f"m:{sid}:+"})
-        kb.append(row)
-
+        line, r = _sub_line_row(s, source)
+        lines.append(line)
+        kb.append(r)
     if source == "kufar":
         kb.append([{"text": "🔥 Супервыгодные", "callback_data": "hot"}])
     kb.append([{"text": "🔄 Обновить", "callback_data": "refresh"}])
     return "\n".join(lines), {"inline_keyboard": kb}
+
+
+def _menu_group(source: str, tag: str) -> "tuple[str, dict]":
+    """Экран одной категории: подписки этого тега с кнопками вкл/выкл и 🔔."""
+    cfg = _load_config_display()
+    subs = [s for s in cfg.get("subscriptions", [])
+            if s.get("source") == source and (s.get("tag") or "разное") == tag]
+    lines = [f"⚙️ <b>#{tag}</b> — {len(subs)} запрос(ов)",
+             "Тап — вкл/выкл; 🔔 — что слать (all→good→super).", ""]
+    kb: list[list[dict]] = []
+    for s in subs:
+        line, r = _sub_line_row(s, source)
+        lines.append(line)
+        kb.append(r)
+    kb.append([{"text": "⬅️ Категории", "callback_data": "g:"},
+               {"text": "🔄 Обновить", "callback_data": f"g:{tag}"}])
+    return "\n".join(lines), {"inline_keyboard": kb}
+
+
+def _menu_view(source: str, data: str) -> "tuple[str, dict]":
+    """Какой экран показать после действия: группу (если мы в ней) или верх."""
+    if data.startswith("g:"):
+        tag = data[2:]
+        return _menu_group(source, tag) if tag else _menu(source)
+    # Тумблеры t:/n: — вернуть на экран той же категории, если меню сгруппировано.
+    if data.startswith(("t:", "n:")):
+        sid = data.split(":", 1)[1]
+        cfg = _load_config_display()
+        subs = [s for s in cfg.get("subscriptions", []) if s.get("source") == source]
+        if source == "kufar" and len(subs) > FLAT_MENU_MAX:
+            for s in subs:
+                if str(s.get("id")) == str(sid):
+                    return _menu_group(source, s.get("tag") or "разное")
+    return _menu(source)
 
 
 def _status_text(source: str) -> str:
@@ -272,8 +357,8 @@ def _handle_callback(source: str, token: str, cq: dict) -> None:
 
     if data == "pause":
         err = _edit_config(_mutate_toggle_pause)
-    elif data == "refresh":
-        pass
+    elif data == "refresh" or data.startswith("g:"):
+        pass  # чистая навигация/обновление — перерисуем ниже нужный экран
     elif data.startswith("t:"):
         sid = data[2:]
         err = _edit_config(_mutate_sub(source, sid,
@@ -305,8 +390,8 @@ def _handle_callback(source: str, token: str, cq: dict) -> None:
             telegram.send_message(token, chat_id, _hot_text())
 
     telegram.answer_callback(token, cq_id, text=err or "готово")
-    if chat_id and message_id:  # перерисовать меню свежими значениями
-        body, kb = _menu(source)
+    if chat_id and message_id:  # перерисовать нужный экран свежими значениями
+        body, kb = _menu_view(source, data)
         telegram.edit_message_text(token, chat_id, message_id, body, reply_markup=kb)
 
 

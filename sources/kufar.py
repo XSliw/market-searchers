@@ -12,11 +12,19 @@ images[] ({path, media_storage:"rms"}) → фото-URL rms.kufar.by/v1/gallery/
 """
 from __future__ import annotations
 
+import os
+import time
 from typing import Any, Optional
 
 import requests
 
 BASE = "https://api.kufar.by/search-api/v2/search/rendered-paginated"
+
+# Вежливая пауза перед каждым запросом: в прогоне ~90 подписок подряд, не хотим
+# долбить Kufar очередью без передышки. Переопределяется env KUFAR_THROTTLE_S.
+THROTTLE_S = float(os.getenv("KUFAR_THROTTLE_S", "0.3"))
+# На троттлинг/5xx — короткий повтор, чтобы разовый 429 не терял подписку целиком.
+RETRY_STATUS = {429, 500, 502, 503, 504}
 
 # Битое/запчасти/реплики: ломают медиану ложными «супервыгодно» и не цель поиска.
 # Список намеренно узкий — общие слова (обмен, ремонт, экран) режут и годные лоты.
@@ -43,9 +51,7 @@ def search(query: str, *, cat: Optional[str] = None, rgn: Optional[str] = None,
         hi = int((max_byn if max_byn is not None else 10_000_000) * 100)
         params["prc"] = f"r:{lo},{hi}"
 
-    r = requests.get(BASE, params=params, timeout=30,
-                     headers={"User-Agent": "market-searchers/1.0"})
-    r.raise_for_status()  # 422 при кривом параметре — пусть падает только эта подписка
+    r = _get_with_retry(params)
     ads_raw = r.json().get("ads") or []
 
     out: list[dict] = []
@@ -65,6 +71,33 @@ def search(query: str, *, cat: Optional[str] = None, rgn: Optional[str] = None,
             continue
         out.append(norm)
     return out
+
+
+def _get_with_retry(params: dict) -> requests.Response:
+    """GET с вежливой паузой и коротким повтором на троттлинг/5xx.
+
+    422 (кривой параметр подписки) НЕ ретраим — пусть падает сразу, это баг
+    в конфиге, а не временная неудача. Ретраим только RETRY_STATUS и сетевые сбои.
+    """
+    last: Optional[Exception] = None
+    for attempt in range(3):
+        if THROTTLE_S:
+            time.sleep(THROTTLE_S)
+        try:
+            r = requests.get(BASE, params=params, timeout=30,
+                             headers={"User-Agent": "market-searchers/1.0"})
+        except requests.RequestException as e:  # сеть моргнула — повторим
+            last = e
+            time.sleep(1.0 * (attempt + 1))
+            continue
+        if r.status_code in RETRY_STATUS and attempt < 2:
+            time.sleep(1.0 * (attempt + 1))  # backoff перед повтором
+            continue
+        r.raise_for_status()  # 422 и прочее 4xx — пусть падает только эта подписка
+        return r
+    if last is not None:
+        raise last
+    raise RuntimeError("kufar: исчерпаны повторы без ответа")
 
 
 def _normalize(ad: dict) -> Optional[dict]:
