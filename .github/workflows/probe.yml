@@ -12,7 +12,7 @@ on:
       target:
         description: 'Что разведать'
         type: choice
-        options: [sendico, auctions, kufar, both]
+        options: [sendico, auctions, yahoo, kufar, both]
         default: sendico
 
 permissions:
@@ -61,6 +61,12 @@ jobs:
       - name: Аукционы — открытые источники без логина
         if: ${{ inputs.target == 'auctions' || inputs.target == 'both' }}
         run: node tools/probe_auctions.mjs
+
+      # Yahoo Auctions открывается с IP Actions (локально — геоблок EEA/UK),
+      # JSON-выдачи у него нет → разбираем HTML. Этот шаг вскрывает вёрстку.
+      - name: Yahoo Auctions — структура выдачи под парсер
+        if: ${{ inputs.target == 'yahoo' || inputs.target == 'auctions' || inputs.target == 'both' }}
+        run: node tools/probe_yahoo.mjs
 
       - name: Kufar — фильтры категорий
         if: ${{ inputs.target == 'kufar' || inputs.target == 'both' }}
