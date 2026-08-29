@@ -12,7 +12,7 @@ on:
       target:
         description: 'Что разведать'
         type: choice
-        options: [sendico, kufar, both]
+        options: [sendico, auctions, kufar, both]
         default: sendico
 
 permissions:
@@ -48,18 +48,22 @@ jobs:
           curl -s https://ipinfo.io/json | head -20 || true
 
       - name: Sendico — гард, маршруты, фронтенд-бандл
-        if: ${{ inputs.target != 'kufar' }}
+        if: ${{ inputs.target == 'sendico' || inputs.target == 'both' }}
         run: node tools/probe_sendico_gate.mjs
 
       - name: Sendico — вход и поиск аукционных лотов
-        if: ${{ inputs.target != 'kufar' }}
+        if: ${{ inputs.target == 'sendico' || inputs.target == 'both' }}
         env:
           SENDICO_EMAIL: ${{ secrets.SENDICO_EMAIL }}
           SENDICO_PASSWORD: ${{ secrets.SENDICO_PASSWORD }}
         run: node tools/probe_sendico.mjs
 
+      - name: Аукционы — открытые источники без логина
+        if: ${{ inputs.target == 'auctions' || inputs.target == 'both' }}
+        run: node tools/probe_auctions.mjs
+
       - name: Kufar — фильтры категорий
-        if: ${{ inputs.target != 'sendico' }}
+        if: ${{ inputs.target == 'kufar' || inputs.target == 'both' }}
         run: |
           node tools/probe_verify.mjs
           node tools/probe_multi.mjs
