@@ -2524,11 +2524,11 @@
     }
   ],
   "runs": {
-    "last_finished": "2026-10-27 23:10:05Z",
-    "last_started": "2026-10-27 23:07:51Z",
-    "new": 90,
-    "note": "",
-    "ok": true
+    "last_finished": "2026-10-28 02:22:55Z",
+    "last_started": "2026-10-28 02:21:46Z",
+    "new": 0,
+    "note": "kufar:iph11: HTTPError: 403 Client Error: Forbidden for url: https://api.kufar.by/search-api/v2/search/rendered-paginated?size=200&sort=lst.d&query=iphone+11&cat=17010&rgn=7; kufar:iph12: HTTPError: 403 Client Error: Forbidden for url: https://api.kufar.by/search-api/v2/search/rendered-paginated?size=200&sort=lst.d&query=iphone+12&cat=17010&rgn=7; kufar:iph13: HTTPError: 403 Client Error: Forbidden for url: https://api.kufar.by/search-api/v2/search/rendered-paginated?size=200&sort=lst.d&query=ip",
+    "ok": false
   },
   "seen": {
     "kufar:adidas46": [
